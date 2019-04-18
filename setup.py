@@ -1,7 +1,9 @@
-from setuptools import setup, Extension
+from setuptools import find_packages, setup, Extension
 from setuptools.command.build_ext import build_ext
+import os
 import sys
 import setuptools
+import warnings
 
 __version__ = '0.0.1'
 
@@ -77,7 +79,12 @@ class BuildExt(build_ext):
     }
 
     if sys.platform == 'darwin':
-        c_opts['unix'] += ['-stdlib=libc++', '-mmacosx-version-min=10.7', '-D__unix__', '-DEEGO_SDK_BIND_STATIC']
+        if os.environ.get('MACOSX_DEPLOYMENT_TARGET') != '10.9':
+            warnings.warn('Compiling pybind11 wrapper with OSX is only '
+                          'supported if the environment variable '
+                          'MACOSX_DEPLOYMENT_TARGET is set to "10.9"',
+                          UserWarning)
+        c_opts['unix'] += ['-stdlib=libc++', '-mmacosx-version-min=10.9', '-D__unix__']
 
     def build_extensions(self):
         ct = self.compiler.compiler_type
@@ -103,6 +110,7 @@ setup(
     url='',
     description='',
     long_description='',
+    packages=find_packages(include=['timeflux_eego'], exclude=['src', 'doc', 'test']),
     ext_modules=ext_modules,
     install_requires=['pybind11>=2.2'],
     cmdclass={'build_ext': BuildExt},
