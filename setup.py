@@ -23,9 +23,10 @@ class get_pybind_include(object):
 
 ext_modules = [
     Extension(
-        'eego_sdk',
+        'eego',
         [
-            'src/pybind11_wrapper.cpp',
+            'src/glue.cpp',
+            #'src/eemagine/sdk/wrapper.cc'
         ],
         include_dirs=[
             # Path to pybind11 headers
@@ -88,6 +89,8 @@ class BuildExt(build_ext):
                 opts.append('-fvisibility=hidden')
         elif ct == 'msvc':
             opts.append('/DVERSION_INFO=\\"%s\\"' % self.distribution.get_version())
+            opts.append('/DEEGO_SDK_BIND_DYNAMIC')
+            opts.append('/D_UNICODE')
         for ext in self.extensions:
             ext.extra_compile_args = opts
         build_ext.build_extensions(self)
@@ -95,10 +98,10 @@ class BuildExt(build_ext):
 setup(
     name='timeflux_eego',
     version=__version__,
-    author='Bob',
-    author_email='bob@example.com',
+    author='Timeflux',
+    author_email='',
     url='',
-    description='A test project using pybind11',
+    description='',
     long_description='',
     ext_modules=ext_modules,
     install_requires=['pybind11>=2.2'],

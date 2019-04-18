@@ -1,5 +1,10 @@
 #include <pybind11/pybind11.h>
 
+int add(int i, int j) {
+    return i + j;
+}
+
+
 //namespace py = pybind11;
 
 // pybind
@@ -17,7 +22,7 @@
 #endif
 ///////////////////////////////////////////////////////////////////////////////
 namespace {
-//
+
 std::ostream &operator<<(std::ostream &out,
                          const eemagine::sdk::channel::channel_type &t) {
   switch (t) {
@@ -64,8 +69,15 @@ public:
                                               double bip_range) {
     return OpenEegStream(rate, ref_range, bip_range);
   }
+  eemagine::sdk::stream *OpenEegStream(int rate, double ref_range, double bip_range,
+                                       unsigned long long ref_mask=0xffffffffffffffff, unsigned long long bip_mask=0xffffffffffffffff) {
+    return OpenEegStream(rate, ref_range, bip_range, ref_mask, bip_mask);
+  }
   eemagine::sdk::stream *OpenImpedanceStream_nomask() {
     return OpenImpedanceStream();
+  }
+  eemagine::sdk::stream *OpenImpedanceStream(unsigned long long ref_mask = 0xffffffffffffffff) {
+    return OpenImpedanceStream(ref_mask);
   }
 };
 
@@ -74,16 +86,34 @@ public:
 //
 class factory_wrapper {
 public:
+
+  factory_wrapper(void * data = NULL) {
+#ifdef EEGO_SDK_BIND_STATIC
+    _factory = std::unique_ptr<eemagine::sdk::factory>(new eemagine::sdk::factory(data));
+#else
+    _factory = std::unique_ptr<eemagine::sdk::factory>(new eemagine::sdk::factory("eego-SDK.dll"));
+#endif
+  }
+
+//#else
+////  factory_wrapper(const std::wstring& path, void * data = NULL) {
+////    _factory = std::unique_ptr<eemagine::sdk::factory>(new eemagine::sdk::factory(path, data));
+////  }
+//#endif
+
   eemagine::sdk::factory::version getVersion() const {
-    return _factory.getVersion();
+    if (!_factory) throw (std::runtime_error("Nope"));
+    return _factory.get()->getVersion();
   }
 
   amplifier_wrapper *getAmplifier() {
-    return static_cast<amplifier_wrapper *>(_factory.getAmplifier());
+    if (!_factory) throw (std::runtime_error("Nope"));
+    return static_cast<amplifier_wrapper *>(_factory.get()->getAmplifier());
   }
   std::vector<amplifier_wrapper *> getAmplifiers() {
+    if (!_factory) throw (std::runtime_error("Nope"));
     std::vector<amplifier_wrapper *> rv;
-    for (auto *a : _factory.getAmplifiers()) {
+    for (auto *a : _factory.get()->getAmplifiers()) {
       rv.push_back(static_cast<amplifier_wrapper *>(a));
     }
     return rv;
@@ -91,17 +121,19 @@ public:
 
 #ifdef HAVE_CASCADING
   amplifier_wrapper *createCascadedAmplifier(pybind11::list python_list) {
+    if (!_factory) throw (std::runtime_error("Nope"));
     std::vector<eemagine::sdk::amplifier *> amplifier_list;
     for (auto p : python_list) {
       amplifier_list.push_back(p.cast<amplifier_wrapper *>());
     }
     return static_cast<amplifier_wrapper *>(
-        _factory.createCascadedAmplifier(amplifier_list));
+        _factory.get()->createCascadedAmplifier(amplifier_list));
   }
 #endif
 
 private:
-  eemagine::sdk::factory _factory;
+  //eemagine::sdk::factory _factory;
+  std::unique_ptr<eemagine::sdk::factory> _factory;
 };
 } // namespace
 ///////////////////////////////////////////////////////////////////////////////
@@ -161,11 +193,15 @@ PYBIND11_MODULE(eego_sdk, m) {
   //
   pybind11::class_<amplifier_wrapper>(m, "amplifier")
       .def("getType", &amplifier_wrapper::getType)
+      .def("TEST", &amplifier_wrapper::getType)
       .def("getFirmwareVersion", &amplifier_wrapper::getFirmwareVersion)
       .def("getSerialNumber", &amplifier_wrapper::getSerialNumber)
-      .def("OpenEegStream", &amplifier_wrapper::OpenEegStream_nomask)
-      .def("OpenImpedanceStream",
+      .def("OpenEegStream_nomask", &amplifier_wrapper::OpenEegStream_nomask)
+      .def("OpenEegStream", &amplifier_wrapper::OpenEegStream)
+      .def("OpenImpedanceStream_nomask",
            &amplifier_wrapper::OpenImpedanceStream_nomask)
+      .def("OpenImpedanceStream",
+           &amplifier_wrapper::OpenImpedanceStream)
       .def("getChannelList", &amplifier_wrapper::getChannelList)
       .def("getSamplingRatesAvailable",
            &amplifier_wrapper::getSamplingRatesAvailable)
@@ -187,7 +223,12 @@ PYBIND11_MODULE(eego_sdk, m) {
   // factory
   //
   pybind11::class_<factory_wrapper>(m, "factory")
-      .def(pybind11::init<>())
+//#ifdef EEGO_SDK_BIND_STATIC
+//      .def(pybind11::init<>())
+//#else
+//      .def(pybind11::init<const std::wstring&, void *>())
+//#endif
+      .def(pybind11::init<void *>())
       .def("getVersion", &factory_wrapper::getVersion)
       .def("getAmplifier", &factory_wrapper::getAmplifier)
       .def("getAmplifiers", &factory_wrapper::getAmplifiers)
@@ -195,4 +236,29 @@ PYBIND11_MODULE(eego_sdk, m) {
       .def("createCascadedAmplifier", &factory_wrapper::createCascadedAmplifier)
 #endif
       ;
+
+    m.doc() = R"pbdoc(
+        Pybind11 example plugin
+        -----------------------
+
+        .. currentmodule:: python_example
+
+        .. autosummary::
+           :toctree: _generate
+
+           add
+           subtract
+    )pbdoc";
+
+    m.def("add", &add, R"pbdoc(
+        Add two numbers
+
+        Some other explanation about the add function.
+    )pbdoc");
+
+    m.def("subtract", [](int i, int j) { return i - j; }, R"pbdoc(
+        Subtract two numbers
+
+        Some other explanation about the subtract function.
+    )pbdoc");
 }
