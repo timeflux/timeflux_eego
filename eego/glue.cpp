@@ -13,12 +13,11 @@
 namespace py = pybind11;
 
 // Python-C++ bindings using pybind11
-PYBIND11_MODULE(eego, base_module) {
-    //m.doc() = "eego_sdk docstring";
-    py::module _sm = base_module.def_submodule("_sdk", "Submodule _sdk");
+PYBIND11_MODULE(glue, m) {
+    m.doc() = "eego.glue docstring";
 
     // eego._sdk.channel_type
-    py::enum_<eemagine::sdk::channel::channel_type>(_sm, "channel_type")
+    py::enum_<eemagine::sdk::channel::channel_type>(m, "channel_type")
         .value("none",                eemagine::sdk::channel::channel_type::none)
         .value("reference",           eemagine::sdk::channel::channel_type::reference)
         .value("bipolar",             eemagine::sdk::channel::channel_type::bipolar)
@@ -31,7 +30,7 @@ PYBIND11_MODULE(eego, base_module) {
         .value("magnetometer",        eemagine::sdk::channel::channel_type::magnetometer);
 
     // eego._sdk.channel
-    py::class_<eemagine::sdk::channel>(_sm, "channel")
+    py::class_<eemagine::sdk::channel>(m, "channel")
         .def_property_readonly("index", &eemagine::sdk::channel::getIndex)
         .def_property_readonly("type", &eemagine::sdk::channel::getType)
         .def("__repr__", [](const eemagine::sdk::channel& ch) {
@@ -42,7 +41,7 @@ PYBIND11_MODULE(eego, base_module) {
         });
 
     // eego._sdk.buffer
-    py::class_<eemagine::sdk::buffer>(_sm, "buffer")
+    py::class_<eemagine::sdk::buffer>(m, "buffer")
         .def_property_readonly("channel_count", &eemagine::sdk::buffer::getChannelCount)
         .def_property_readonly("sample_count",  &eemagine::sdk::buffer::getSampleCount)
         .def_property_readonly("shape", [](const eemagine::sdk::buffer& buf) {
@@ -59,13 +58,13 @@ PYBIND11_MODULE(eego, base_module) {
             py::keep_alive<0, 1>());
 
     // eego._sdk.stream
-    py::class_<eemagine::sdk::stream>(_sm, "stream")
+    py::class_<eemagine::sdk::stream>(m, "stream")
         .def_property_readonly("channels", &eemagine::sdk::stream::getChannelList)
         .def("get_data", &eemagine::sdk::stream::getData);
 
     // eego._sdk.amplifier
-    //py::class_<eemagine::sdk::amplifier>(_sm, "amplifier")
-    py::class_<eemagine::sdk::amplifier>(_sm, "amplifier")
+    //py::class_<eemagine::sdk::amplifier>(m, "amplifier")
+    py::class_<eemagine::sdk::amplifier>(m, "amplifier")
         .def_property_readonly("type",              &eemagine::sdk::amplifier::getType)
         .def_property_readonly("firmware_version",  &eemagine::sdk::amplifier::getFirmwareVersion)
         .def_property_readonly("serial_number",     &eemagine::sdk::amplifier::getSerialNumber)
@@ -77,7 +76,7 @@ PYBIND11_MODULE(eego, base_module) {
         .def("open_impedance_stream",               &eemagine::sdk::amplifier::OpenImpedanceStream);
 
     // eego._sdk.factory.version
-    py::class_<eemagine::sdk::factory::version>(_sm, "factory.version")
+    py::class_<eemagine::sdk::factory::version>(m, "factory.version")
         .def_readonly("major", &eemagine::sdk::factory::version::major)
         .def_readonly("minor", &eemagine::sdk::factory::version::minor)
         .def_readonly("micro", &eemagine::sdk::factory::version::micro)
@@ -98,7 +97,7 @@ PYBIND11_MODULE(eego, base_module) {
         });
 
     // eego._sdk.factory
-    py::class_<eemagine::sdk::factory>(_sm, "factory")
+    py::class_<eemagine::sdk::factory>(m, "factory")
 #ifdef EEGO_SDK_BIND_STATIC
         .def(py::init<void *>())
 #else

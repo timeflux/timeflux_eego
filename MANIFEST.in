@@ -1,0 +1,6 @@
+include eego/windows/32bit/eego-SDK.dll
+include eego/windows/32bit/eego-SDK.lib
+include eego/windows/64bit/eego-SDK.dll
+include eego/windows/64bit/eego-SDK.lib
+include eego/linux/32bit/libeego-SDK.so
+include eego/linux/64bit/libeego-SDK.so

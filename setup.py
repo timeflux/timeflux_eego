@@ -25,16 +25,15 @@ class get_pybind_include(object):
 
 ext_modules = [
     Extension(
-        'eego',
+        'eego.glue',
         [
-            'src/glue.cpp',
-            #'src/eemagine/sdk/wrapper.cc'
+            'eego/glue.cpp',
         ],
         include_dirs=[
             # Path to pybind11 headers
             get_pybind_include(),
             get_pybind_include(user=True),
-            'src',
+            'eego',
         ],
         language='c++',
     ),
@@ -102,17 +101,39 @@ class BuildExt(build_ext):
             ext.extra_compile_args = opts
         build_ext.build_extensions(self)
 
+
+requirements = [
+    'pybind11>=2.2',
+    'numpy',
+    'timeflux @ git+https://github.com/timeflux/timeflux#egg=timeflux',
+]
+setup_requirements = ['pytest-runner', ]
+test_requirements = ['pytest', ]
+
 setup(
-    name='timeflux_eego',
-    version=__version__,
     author='Timeflux',
     author_email='',
-    url='',
+    name='timeflux_eego',
+    classifiers=[
+        'Development Status :: 2 - Pre-Alpha',
+        'Intended Audience :: Developers',
+        'License :: OSI Approved :: MIT License',
+        'Natural Language :: English',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+    ],
     description='',
-    long_description='',
-    packages=find_packages(include=['timeflux_eego'], exclude=['src', 'doc', 'test']),
-    ext_modules=ext_modules,
-    install_requires=['pybind11>=2.2'],
-    cmdclass={'build_ext': BuildExt},
+    install_requires=requirements,
+    license="MIT license",
+    include_package_data=True,
+    packages=find_packages(include=['timeflux_eego', 'eego'],
+                           exclude=['doc', 'test']),
+    #ext_modules=ext_modules,
+    #cmdclass={'build_ext': BuildExt},
+    setup_requires=setup_requirements,
+    test_suite='tests',
+    tests_require=test_requirements,
+    url='https://github.com/timeflux/timeflux_eego',
+    version=__version__,
     zip_safe=False,
 )
