@@ -1,101 +1,184 @@
 """
-
 """
-import collections
-import enum
+import time
+
 
 from timeflux.core.node import Node
 import numpy as np
-#import scipy.signal
 
 import eego
 
 
-class StandardConfig:
-    def __init__(self, n_ref, n_bip, ref_range=1, bip_range=4):
-        self.n_ref = n_ref
-        self.n_bip = n_bip
-        self.ref_range = ref_range
-        self.bip_range = bip_range
-
-    @property
-    def ref_mask(self):
-        return StandardConfig._mask(self.n_ref)
-
-    @property
-    def bip_mask(self):
-        return StandardConfig._mask(self.n_bip)
-
-    @staticmethod
-    def _mask(n):
-        return (1 << n) - 1
-
-
-class EegoAmplifierConfig(enum.Enum):
-    EE211 = StandardConfig(n_ref=64, n_bip=0)
-    EE212 = StandardConfig(n_ref=32, n_bip=0)
-    EE213 = StandardConfig(n_ref=16, n_bip=0)
-    EE214 = StandardConfig(n_ref=32, n_bip=24)
-    EE215 = StandardConfig(n_ref=64, n_bip=24)
-    EE221 = StandardConfig(n_ref=16, n_bip=0)
-    EE222 = StandardConfig(n_ref=32, n_bip=0)
-    EE223 = StandardConfig(n_ref=32, n_bip=24)
-    EE224 = StandardConfig(n_ref=64, n_bip=0)
-    EE225 = StandardConfig(n_ref=64, n_bip=24)
-    EE410 = StandardConfig(n_ref=8, n_bip=0)
-    EE411 = StandardConfig(n_ref=8, n_bip=0)
-    EE430 = StandardConfig(n_ref=8, n_bip=0)
-
-
-    @staticmethod
-    def get_config(amplifier_name):
-        if hasattr(StandardConfig, amplifier_name):
-            return getattr(StandardConfig, amplifier_name)
-        raise AttributeError(f'Unknown amplifier {amplifier_name}: no default config available')
-
-
-def _verify_config(amp_type, channel_names, masks):
-    pass
-
-
 class EegoDriver(Node):
 
-    def __init__(self, rate=512, reference_channels=None, bipolar_channels=None, amplifier_index=0):
+    def __init__(self, dll_dir=None,
+                 sampling_rate=512,
+                 reference_channels=None, reference_range=1,
+                 bipolar_channels=None, bipolar_range=4,
+                 amplifier_index=0):
         super().__init__()
-        self._factory = eego._sdk.factory('eego-SDK.dll', None)
+        self._factory = eego.glue.factory(dll_dir or eego.sdk.default_dll(), None)
         self._amplifier = self._factory.amplifiers[amplifier_index]
-        self._config = StandardConfig(16, 0)
-        if rate not in self._amplifier.sampling_rates:
-            raise ValueError(f'Unsupported sampling rate {rate} by {self._amplifier}')  # TODO: amplifier repr or str
+        self._ref_config = self._amplifier.get_default_config('reference',
+                                                              names=reference_channels,
+                                                              signal_range=reference_range)
+        self._bip_config = self._amplifier.get_default_config('bipolar',
+                                                              names=bipolar_channels,
+                                                              signal_range=bipolar_range)
+        if sampling_rate not in self._amplifier.sampling_rates:
+            raise ValueError(f'Unsupported sampling rate {sampling_rate} by '
+                             f'{self._amplifier}')  # TODO: amplifier repr or str
+        self._rate = sampling_rate
 
-        self._stream = self._amplifier.open_eeg_stream(rate,
-                                                       self._config.ref_range,
-                                                       self._config.bip_range,
-                                                       reference_channels['mask'],
-                                                       bipolar_channels['mask'])
-        self._channel_names = (
-            tuple(reference_channels['names']) +
-            tuple(bipolar_channels['names']) +
-            ('trigger', 'counter')
-        )
+        self._mode = 'eeg'
+        self._stream = self._amplifier.open_eeg_stream(self._rate,
+                                                       self._ref_config.range,
+                                                       self._bip_config.range,
+                                                       self._ref_config.mask,
+                                                       self._bip_config.mask)
+        # self._channel_names = (
+        #     self._ref_config.channels +
+        #     self._bip_config.channels +
+        #     ('trigger', 'counter')
+        # )
+
+        self._start_timestamp = None
+        self._reference_ts = None
+        self._sample_count = None
+
         self.logger.info('Eeego amplifier connected %s', self._amplifier)
-        #self._filter = scipy.signal.butter(6, 40, 'low', fs=512)
-        #b, a = self._filter
-        #self._zi = np.zeros((max(len(a), len(b)) - 1, len(self._channel_names)))
+        self._tmp = 512*5
 
     def update(self):
-        #self.logger.info('Updating')
+        if self._mode == 'eeg':
+            self.update_signals()
+        elif self._mode == 'impedance':
+            self.update_impedances()
+
+        # Handle events
+        if self.i_events.data is not None and not self.i_events.data.empty:
+            # TODO: use a self._trigger or something like that
+            self.logger.warning('GOT EVENT\n%s\nI am in %s', self.i_events.data, self._mode)
+            start_impedance = np.any('eeg-impedance_begins' == self.i_events.data.label)
+            start_eeg = np.any('eeg-impedance_ends' == self.i_events.data.label)
+
+            if start_eeg and self._mode == 'impedance':
+                self.logger.info('Switching to signal mode...')
+                self._sample_count = None  # TODO: this is just for now
+                del self._stream  # Important: this frees the device so we can make another stream
+                self._stream = self._amplifier.open_eeg_stream(self._rate,
+                                                               self._ref_config.range,
+                                                               self._bip_config.range,
+                                                               self._ref_config.mask,
+                                                               self._bip_config.mask)
+                self._mode = 'eeg'
+                self._tmp = 512*5
+            elif start_impedance and self._mode == 'eeg':
+                self.logger.info('Switching to impedance mode...')
+                self._sample_count = None  # TODO: this is just for now
+                del self._stream  # Important: this frees the device so we can make another stream
+                self._stream = self._amplifier.open_impedance_stream(self._ref_config.mask)
+                self._mode = 'impedance'
+                self._tmp = 10
+
+    def update_signals(self):
+        # The first time, drop all samples that might have been captured
+        # between the initialization and the first time this is called
+        if self._sample_count is None:
+            buffer = self._stream.get_data()
+            self.logger.info('Dropped a total of %d samples of data between '
+                             'driver initializaion and first node update',
+                             buffer.shape[0])
+            self._start_timestamp = np.datetime64(int(time.time() * 1e6), 'us')
+            self._reference_ts = self._start_timestamp
+            self._sample_count = 0
+
         buffer = self._stream.get_data()
-        #self.logger.info('Read %s', buffer.shape)
+        n_samples, n_channels = buffer.shape
+        if n_samples <= 0:
+            self.logger.info('No data')
+            return
+
+        # data = np.array(list(buffer))
+        # data = data.reshape(-1, n_channels)
+        data = np.fromiter(buffer, dtype=np.float).reshape(-1, n_channels)
+
+        # TODO: integrate/modify this from amti
+        # # verify that there is no buffer overflow, but ignore the case when
+        # # the counter rolls over (which is at 2^24 - 1, according to SDK on
+        # # the fmDLLSetDataFormat function documentation)
+        # idx = np.where(np.diff(data[:, 0]) != 1)[0]
+        # if idx.size > 0 and np.any(data[idx, 0] != (2 ** 24 - 1)):
+        #     self.logger.warning('Discontinuity on sample count. Check '
+        #                         'your sampling rate and graph rate!')
+
+        # sample counting to calculate drift
+        self._sample_count += n_samples
+        elapsed_seconds = (
+                (np.datetime64(int(time.time() * 1e6), 'us') - self._reference_ts) /
+                np.timedelta64(1, 's')
+        )
+        n_expected = int(np.round(elapsed_seconds * self._rate))
+        self.logger.info('Read samples=%d, elapsed_seconds=%f. '
+                         'Expected=%d Real=%d Diff=%d (%.3f sec)',
+                         n_samples, elapsed_seconds,
+                         n_expected, self._sample_count, n_expected - self._sample_count,
+                         (n_expected - self._sample_count) / self._rate)
+
+        # Manage timestamps
+        # For this node, we are trusting the device clock and setting the
+        # timestamps from the sample number and sampling rate
+        timestamps = (
+                self._start_timestamp +
+                (np.arange(n_samples + 1) * 1e6 / self._rate).astype('timedelta64[us]')
+        )
+        self._start_timestamp = timestamps[-1]
+
+        eeg_channels = self._ref_config.channels + ('trigger', 'counter')
+        eeg_col_idx = np.r_[np.arange(len(self._ref_config.channels)), [-2, -1]]
+        self.o_eeg_signal.set(data[:, eeg_col_idx],
+                              timestamps=timestamps[:-1],
+                              names=eeg_channels)
+
+        bip_channels = self._bip_config.channels + ('trigger', 'counter')
+        bip_col_idx = np.r_[np.arange(len(self._bip_config.channels)), [-2, -1]]
+        self.o_bipolar_signal.set(data[:, bip_col_idx],
+                                  timestamps=timestamps[:-1],
+                                  names=bip_channels)
+
+    def update_impedances(self):
+        buffer = self._stream.get_data()
         n_samples, n_channels = buffer.shape
         if n_samples <= 0:
             return
-        data = np.array(list(buffer))
-        data = data.reshape(-1, n_channels)
-        #b, a = self._filter
-        #data, self._zi = scipy.signal.lfilter(b, a, data, axis=0, zi=self._zi)
-        #data = data[::2, :]
 
-        self.logger.info('Read data %s', data.shape)
-        self.o_eeg.set(data, names=self._channel_names)
-        self.o_eeg_resampled.set(data[::2, :], names=self._channel_names)
+        self.logger.info('Read %d samples of impedances', n_samples)
+        data = np.fromiter(buffer, dtype=np.float).reshape(-1, n_channels)
+        self._sample_count = self._sample_count or 0
+        self._sample_count += n_samples
+        self.o_eeg_impedance.set(data,
+                                 names=self._ref_config.channels + ('REF', 'GND'))
+
+
+
+import datetime
+
+
+class FakeStimulator(Node):
+    def __init__(self):
+        super().__init__()
+        self.time = datetime.datetime.now()
+        self.mode = 'impedance'
+
+    def update(self):
+        now = datetime.datetime.now()
+        if (now - self.time).total_seconds() > 10:
+            self.time = now
+            if self.mode == 'eeg':
+                stim = 'eeg-impedance_begins'
+                self.mode = 'impedance'
+            else:
+                stim = 'eeg-impedance_ends'
+                self.mode = 'eeg'
+            self.logger.info('Sending %s', stim)
+            self.o_events.set([[stim, None]], names=['label', 'data'])

@@ -105,6 +105,7 @@ class BuildExt(build_ext):
 requirements = [
     'pybind11>=2.2',
     'numpy',
+    'frozendict',
     'timeflux @ git+https://github.com/timeflux/timeflux#egg=timeflux',
 ]
 setup_requirements = ['pytest-runner', ]

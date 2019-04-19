@@ -9,6 +9,7 @@ dependencies:
     - aiohttp
     - pip
     - pip:
+        - frozendict
         - git+https://github.com/timeflux/timeflux@v0.1.1#egg=timeflux
         - pytest-runner
         # Optional, to use timeflux-ui if you want to use the UI server

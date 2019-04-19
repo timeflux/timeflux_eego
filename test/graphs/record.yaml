@@ -1,0 +1,59 @@
+graphs:
+  - nodes:
+      - id: fake_stims
+        module: timeflux_eego.nodes.driver
+        class: FakeStimulator
+
+      - id: driver
+        module: timeflux_eego.nodes.driver
+        class: EegoDriver
+        params:
+          sampling_rate: 512
+          reference_channels: ['F3', 'Fz', 'F4', 'T3', 'C3', 'Cz', 'C4', 'T4', 'P3', 'Pz', 'P4', 'PO1', 'PO2', 'O1', 'Oz', 'O2']
+          reference_range: 1
+          bipolar_channels: ['ECG', null, 'GSR', 'optical']
+          bipolar_range: 4
+
+      - id: display_1
+        module: timeflux.nodes.debug
+        class: Display
+
+      - id: display_2
+        module: timeflux.nodes.debug
+        class: Display
+
+#     # Optional: uncomment to see the real-time signals on http://localhost:8000
+#      - id: viz
+#        module: timeflux_ui.nodes.ui
+#        class: UI
+
+      - id: hdf5
+        module: timeflux.nodes.hdf5
+        class: Save
+        params:
+          # Note: until a version >0.1 of timeflux is released, you need to create
+          # this directory manually!
+          path: data
+
+    rate: 20
+
+    edges:
+      - source: fake_stims:events
+        target: driver:events
+
+#      - source: driver:eeg_signal
+#        target: display_1
+
+#      - source: driver:eeg_impedance
+#        target: display_2
+#        # Optional: uncomment to see the real-time signals on http://localhost:8000
+#      - source: driver:eeg_resampled
+#        target: viz:eeg
+
+      - source: driver:eeg_signal
+        target: hdf5:eego_eeg_signal_raw
+      - source: driver:bipolar_signal
+        target: hdf5:eego_bipolar_signal_raw
+      - source: driver:eeg_impedance
+        target: hdf5:eego_eeg_impedance_raw
+
