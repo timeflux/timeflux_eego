@@ -72,6 +72,7 @@ PYBIND11_MODULE(eego, base_module) {
         .def_property_readonly("channels",          &eemagine::sdk::amplifier::getChannelList)
         .def_property_readonly("reference_ranges",  &eemagine::sdk::amplifier::getReferenceRangesAvailable)
         .def_property_readonly("bipolar_ranges",    &eemagine::sdk::amplifier::getBipolarRangesAvailable)
+        .def_property_readonly("sampling_rates",    &eemagine::sdk::amplifier::getSamplingRatesAvailable)
         .def("open_eeg_stream",                     &eemagine::sdk::amplifier::OpenEegStream)
         .def("open_impedance_stream",               &eemagine::sdk::amplifier::OpenImpedanceStream);
 
