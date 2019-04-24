@@ -58,7 +58,6 @@ EegoAmplifiers = frozendict(
 # Extend pybind11 classes with Python logic
 def add_method(cls, name=None):
     def decorator(func):
-        print('Decorate!')
         setattr(cls, name or func.__name__, func)
         return func
     return decorator

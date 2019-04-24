@@ -47,6 +47,7 @@ PYBIND11_MODULE(glue, m) {
         .def_property_readonly("shape", [](const eemagine::sdk::buffer& buf) {
             return py::make_tuple(buf.getSampleCount(), buf.getChannelCount());
         })
+        .def("read_sample", &eemagine::sdk::buffer::getSample)
         .def("__len__", [](const eemagine::sdk::buffer &b) {
             return b.size();
         })

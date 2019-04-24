@@ -141,7 +141,8 @@ class EegoDriver(Node):
                               names=eeg_channels)
 
         bip_channels = self._bip_config.channels + ('trigger', 'counter')
-        bip_col_idx = np.r_[np.arange(len(self._bip_config.channels)), [-2, -1]]
+        bip_col_idx = np.r_[np.arange(len(self._bip_config.channels)) + len(self._ref_config.channels),
+                            [-2, -1]]
         self.o_bipolar_signal.set(data[:, bip_col_idx],
                                   timestamps=timestamps[:-1],
                                   names=bip_channels)
