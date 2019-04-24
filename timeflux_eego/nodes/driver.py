@@ -2,7 +2,6 @@
 """
 import time
 
-
 from timeflux.core.node import Node
 import numpy as np
 
@@ -18,7 +17,21 @@ class EegoDriver(Node):
                  amplifier_index=0):
         super().__init__()
         self._factory = eego.glue.factory(dll_dir or eego.sdk.default_dll(), None)
-        self._amplifier = self._factory.amplifiers[amplifier_index]
+        retries = 3
+        self._amplifier = None
+        while retries > 0:
+            retries -= 1
+            try:
+                self._amplifier = self._factory.amplifiers[amplifier_index]
+            except IndexError:
+                self.logger.warning('Amplifier %d not found, retrying...', amplifier_index)
+                time.sleep(1)
+            if self._amplifier:
+                self.logger.info('Connected to amplifier')
+                break
+        if not self._amplifier:
+            self.logger.error('Could not find EEG amplifier, is it connected and on?')
+            raise ValueError('Could not initialize EEG amplifier')
         self._ref_config = self._amplifier.get_default_config('reference',
                                                               names=reference_channels,
                                                               signal_range=reference_range)
@@ -31,6 +44,7 @@ class EegoDriver(Node):
         self._rate = sampling_rate
 
         self._mode = 'eeg'
+        self.logger.info('Masks are %   x %x', self._bip_config.mask, self._ref_config.mask)
         self._stream = self._amplifier.open_eeg_stream(self._rate,
                                                        self._ref_config.range,
                                                        self._bip_config.range,
@@ -58,9 +72,9 @@ class EegoDriver(Node):
         # Handle events
         if self.i_events.data is not None and not self.i_events.data.empty:
             # TODO: use a self._trigger or something like that
-            self.logger.warning('GOT EVENT\n%s\nI am in %s', self.i_events.data, self._mode)
-            start_impedance = np.any('eeg-impedance_begins' == self.i_events.data.label)
-            start_eeg = np.any('eeg-impedance_ends' == self.i_events.data.label)
+            #self.logger.warning('GOT EVENT\n%s\nI am in %s', self.i_events.data, self._mode)
+            start_impedance = np.any('pilote-Youpling-V1_eeg-impedance_begins' == self.i_events.data.label)
+            start_eeg = np.any('pilote-Youpling-V1_eeg-impedance_ends' == self.i_events.data.label)
 
             if start_eeg and self._mode == 'impedance':
                 self.logger.info('Switching to signal mode...')
@@ -82,6 +96,7 @@ class EegoDriver(Node):
                 self._tmp = 10
 
     def update_signals(self):
+        #import ipdb; ipdb.set_trace()
         # The first time, drop all samples that might have been captured
         # between the initialization and the first time this is called
         if self._sample_count is None:
@@ -96,12 +111,11 @@ class EegoDriver(Node):
         buffer = self._stream.get_data()
         n_samples, n_channels = buffer.shape
         if n_samples <= 0:
-            self.logger.info('No data')
+            self.logger.info('No data yet...')
             return
 
-        # data = np.array(list(buffer))
-        # data = data.reshape(-1, n_channels)
         data = np.fromiter(buffer, dtype=np.float).reshape(-1, n_channels)
+        del buffer
 
         # TODO: integrate/modify this from amti
         # # verify that there is no buffer overflow, but ignore the case when
@@ -119,7 +133,7 @@ class EegoDriver(Node):
                 np.timedelta64(1, 's')
         )
         n_expected = int(np.round(elapsed_seconds * self._rate))
-        self.logger.info('Read samples=%d, elapsed_seconds=%f. '
+        self.logger.debug('Read samples=%d, elapsed_seconds=%f. '
                          'Expected=%d Real=%d Diff=%d (%.3f sec)',
                          n_samples, elapsed_seconds,
                          n_expected, self._sample_count, n_expected - self._sample_count,
@@ -153,12 +167,17 @@ class EegoDriver(Node):
         if n_samples <= 0:
             return
 
-        self.logger.info('Read %d samples of impedances', n_samples)
+        self.logger.debug('Read %d samples of impedances', n_samples)
         data = np.fromiter(buffer, dtype=np.float).reshape(-1, n_channels)
+        del buffer
         self._sample_count = self._sample_count or 0
         self._sample_count += n_samples
+        impedance_channel_names = self._ref_config.channels + ('REF', 'GND')
         self.o_eeg_impedance.set(data,
-                                 names=self._ref_config.channels + ('REF', 'GND'))
+                                 names=impedance_channel_names)
+        self.logger.info('Impedances:\n%s',
+                         ' '.join([f'{ch}={val}'
+                                   for ch, val in zip(impedance_channel_names, data[0])]))
 
 
 
@@ -176,10 +195,10 @@ class FakeStimulator(Node):
         if (now - self.time).total_seconds() > 10:
             self.time = now
             if self.mode == 'eeg':
-                stim = 'eeg-impedance_begins'
+                stim = 'pilote-Youpling-V1_eeg-impedance_begins'
                 self.mode = 'impedance'
             else:
-                stim = 'eeg-impedance_ends'
+                stim = 'pilote-Youpling-V1_eeg-impedance_ends'
                 self.mode = 'eeg'
             self.logger.info('Sending %s', stim)
             self.o_events.set([[stim, None]], names=['label', 'data'])
