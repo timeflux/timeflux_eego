@@ -22,10 +22,10 @@ graphs:
         module: timeflux.nodes.debug
         class: Display
 
-#     # Optional: uncomment to see the real-time signals on http://localhost:8000
-#      - id: viz
-#        module: timeflux_ui.nodes.ui
-#        class: UI
+     # Optional: uncomment to see the real-time signals on http://localhost:8000
+      - id: viz
+        module: timeflux_ui.nodes.ui
+        class: UI
 
       - id: hdf5
         module: timeflux.nodes.hdf5
@@ -47,8 +47,10 @@ graphs:
 #      - source: driver:eeg_impedance
 #        target: display_2
 #        # Optional: uncomment to see the real-time signals on http://localhost:8000
-#      - source: driver:eeg_resampled
-#        target: viz:eeg
+      - source: driver:bipolar_signal
+        target: viz:bipolar
+      - source: driver:eeg_signal
+        target: viz:eeg
 
       - source: driver:eeg_signal
         target: hdf5:eego_eeg_signal_raw
