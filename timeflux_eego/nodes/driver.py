@@ -44,7 +44,7 @@ class EegoDriver(Node):
         self._rate = sampling_rate
 
         self._mode = 'eeg'
-        self.logger.info('Masks are %   x %x', self._bip_config.mask, self._ref_config.mask)
+        self.logger.info('Masks are %x %x', self._bip_config.mask, self._ref_config.mask)
         self._stream = self._amplifier.open_eeg_stream(self._rate,
                                                        self._ref_config.range,
                                                        self._bip_config.range,
@@ -108,7 +108,12 @@ class EegoDriver(Node):
             self._reference_ts = self._start_timestamp
             self._sample_count = 0
 
-        buffer = self._stream.get_data()
+        try:
+            buffer = self._stream.get_data()
+        except RuntimeError as ex:
+            self.logger.error('Eego SDK gave runtime error (%s), '
+                              'resuming the driver acquisition...', ex)
+            return
         n_samples, n_channels = buffer.shape
         if n_samples <= 0:
             self.logger.info('No data yet...')
