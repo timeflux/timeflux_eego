@@ -4,6 +4,7 @@ import time
 
 from timeflux.core.node import Node
 import numpy as np
+import scipy.stats
 
 import eego
 
@@ -14,7 +15,8 @@ class EegoDriver(Node):
                  sampling_rate=512,
                  reference_channels=None, reference_range=1,
                  bipolar_channels=None, bipolar_range=4,
-                 amplifier_index=0):
+                 amplifier_index=0,
+                 impedance_window=1):
         super().__init__()
         self._factory = eego.glue.factory(dll_dir or eego.sdk.default_dll(), None)
         retries = 3
@@ -59,6 +61,8 @@ class EegoDriver(Node):
         self._start_timestamp = None
         self._reference_ts = None
         self._sample_count = None
+        self._impedance_window = impedance_window
+        self._impedance_history = None
 
         self.logger.info('Eeego amplifier connected %s', self._amplifier)
         self._tmp = 512*5
@@ -89,6 +93,7 @@ class EegoDriver(Node):
                 self._tmp = 512*5
             elif start_impedance and self._mode == 'eeg':
                 self.logger.info('Switching to impedance mode...')
+                self._impedance_history = None
                 self._sample_count = None  # TODO: this is just for now
                 del self._stream  # Important: this frees the device so we can make another stream
                 self._stream = self._amplifier.open_impedance_stream(self._ref_config.mask)
@@ -138,11 +143,11 @@ class EegoDriver(Node):
                 np.timedelta64(1, 's')
         )
         n_expected = int(np.round(elapsed_seconds * self._rate))
-        self.logger.debug('Read samples=%d, elapsed_seconds=%f. '
-                         'Expected=%d Real=%d Diff=%d (%.3f sec)',
-                         n_samples, elapsed_seconds,
-                         n_expected, self._sample_count, n_expected - self._sample_count,
-                         (n_expected - self._sample_count) / self._rate)
+        # self.logger.debug('Read samples=%d, elapsed_seconds=%f. '
+        #                  'Expected=%d Real=%d Diff=%d (%.3f sec)',
+        #                  n_samples, elapsed_seconds,
+        #                  n_expected, self._sample_count, n_expected - self._sample_count,
+        #                  (n_expected - self._sample_count) / self._rate)
 
         # Manage timestamps
         # For this node, we are trusting the device clock and setting the
@@ -178,9 +183,26 @@ class EegoDriver(Node):
         self._sample_count = self._sample_count or 0
         self._sample_count += n_samples
         impedance_channel_names = self._ref_config.channels + ('REF', 'GND')
-        self.o_eeg_impedance.set(data,
+
+        # Manage window
+        if self._impedance_history is None:
+            self._impedance_history = data
+        else:
+            self._impedance_history = np.r_[self._impedance_history, data][-self._impedance_window:]
+        #self.logger.info('impedance history is %s', self._impedance_history.shape)
+
+        #avg_data = np.mean(self._impedance_history, axis=0)
+        #avg_data = np.median(self._impedance_history, axis=0)  # median is more outlier-friendly
+        avg_data = scipy.stats.gmean(self._impedance_history + 1e-3, axis=0)
+
+        #self.logger.info('avg_data is %s', avg_data)
+        #self.logger.info('avg_data shape is %s', avg_data.shape)
+        #self.logger.info('names are %s', impedance_channel_names)
+
+        self.o_eeg_impedance.set(avg_data[np.newaxis, :],
                                  names=impedance_channel_names)
-        self.logger.info('Impedances:\n%s',
+        self.logger.info('Impedances (averaged over %d samples)\n%s',
+                         self._impedance_window,
                          ' '.join([f'{ch}={val}'
                                    for ch, val in zip(impedance_channel_names, data[0])]))
 
