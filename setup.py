@@ -114,7 +114,7 @@ test_requirements = ['pytest', ]
 setup(
     author='Timeflux',
     author_email='',
-    name='timeflux_eego',
+    name='timeflux-eego',
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
